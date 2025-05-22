@@ -25,4 +25,4 @@ jobs:
         run: |
            aws s3 ls
            
-           aws s3 sync . s3://deploywebsite12 --delete
+           aws s3 sync . s3://testing140505 --delete
