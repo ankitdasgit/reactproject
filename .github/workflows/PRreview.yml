@@ -1,4 +1,4 @@
-name: PR Review (React Clean)
+name: PR Review (React Clean Final)
 
 on:
   pull_request:
@@ -14,10 +14,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 🔹 Checkout
       - uses: actions/checkout@v4
 
-      # 🔹 Setup Node
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -26,7 +24,7 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
-      # 🔹 Get diff (only JS/TS files)
+      # 🔹 Get diff (only code files)
       - name: Get Code Diff
         run: |
           git fetch origin ${{ github.base_ref }}
@@ -34,63 +32,66 @@ jobs:
             | grep -E "\.js|\.jsx|\.ts|\.tsx" \
             | head -c 20000 > pr.diff
 
-      # 🔹 ESLint
+      # 🔹 ESLint (only errors)
       - name: Run ESLint
         run: npx eslint . -f json > eslint.json || true
 
-      # 🔹 Security audit
+      # 🔹 Security (filtered)
       - name: Run npm audit
         run: npm audit --json > audit.json || true
 
-      # 🔹 Build check
+      # 🔹 Build (ignore warnings)
       - name: Build
-        run: npm run build || echo "fail" > build.txt
+        run: npm run build > build.log 2>&1 || echo "fail" > build.txt
 
-      # 🔥 Prepare CLEAN report (IMPORTANT FIX)
-      - name: Prepare Report
+      # 🔥 CLEAN REPORT (FIXED PROPERLY)
+      - name: Prepare Clean Report
         run: |
-          echo "## 🧹 ESLint Issues" > report.txt
+          echo "## 🧹 Code Issues" > report.txt
 
-          jq -r '
-          .[]?.messages[]? |
-          "- " + .message
-          ' eslint.json >> report.txt 2>/dev/null || echo "No issues" >> report.txt
+          # ESLint (only errors severity=2)
+          ESLINT_ERRORS=$(jq '
+            [.[].messages[]? | select(.severity==2)] | length
+          ' eslint.json)
 
-          echo "\n## 🔐 Security Summary" >> report.txt
+          if [ "$ESLINT_ERRORS" -gt 0 ]; then
+            echo "❌ $ESLINT_ERRORS ESLint errors found" >> report.txt
+          else
+            echo "✅ No ESLint errors" >> report.txt
+          fi
 
-          echo "\n### 🚨 Critical Issues" >> report.txt
-          jq -r '
-          .vulnerabilities | to_entries[] 
-          | select(.value.severity=="critical") 
-          | "- " + .key
-          ' audit.json >> report.txt 2>/dev/null || echo "None" >> report.txt
+          echo "\n## 🔐 Security" >> report.txt
 
-          echo "\n### ⚠️ High Issues" >> report.txt
-          jq -r '
-          .vulnerabilities | to_entries[] 
-          | select(.value.severity=="high") 
-          | "- " + .key
-          ' audit.json >> report.txt 2>/dev/null || echo "None" >> report.txt
+          CRITICAL=$(jq '.vulnerabilities | to_entries[] | select(.value.severity=="critical") | .key' audit.json | wc -l)
+          HIGH=$(jq '.vulnerabilities | to_entries[] | select(.value.severity=="high") | .key' audit.json | wc -l)
 
-          echo "\n## 🏗 Build Status" >> report.txt
+          echo "🚨 Critical: $CRITICAL" >> report.txt
+          echo "⚠️ High: $HIGH" >> report.txt
+
+          if [ "$CRITICAL" -gt 0 ]; then
+            echo "\nCritical packages:" >> report.txt
+            jq -r '.vulnerabilities | to_entries[] | select(.value.severity=="critical") | "- " + .key' audit.json >> report.txt
+          fi
+
+          echo "\n## 🏗 Build" >> report.txt
           if [ -f build.txt ]; then
             echo "❌ Build failed" >> report.txt
           else
             echo "✅ Build successful" >> report.txt
           fi
 
-      # 🔹 Comment on PR (CLEAN OUTPUT)
+      # 🔹 Comment (VERY CLEAN OUTPUT)
       - name: Comment on PR
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
 
-            const diff = fs.readFileSync('pr.diff', 'utf8').slice(0, 60000);
+            const diff = fs.readFileSync('pr.diff', 'utf8').slice(0, 20000);
             const report = fs.readFileSync('report.txt', 'utf8');
 
             const body =
-              "## 🔍 Code Changes\n" +
+              "## 🔍 Changes\n" +
               "```diff\n" +
               diff +
               "\n```\n\n" +
@@ -103,7 +104,6 @@ jobs:
               body: body
             });
 
-            
 
 
 # name: PR Review (React Advanced)
