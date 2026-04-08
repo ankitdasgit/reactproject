@@ -1,4 +1,4 @@
-name: PR Review (Terraform)
+name: PR Review (React)
 
 on:
   pull_request:
@@ -18,49 +18,69 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 🔹 Get clean Terraform diff
-      - name: Get Terraform Diff
+      # 🔹 Setup Node
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # 🔹 Install dependencies
+      - name: Install Dependencies
+        run: npm install
+
+      # 🔹 Get JS/React diff
+      - name: Get Code Diff
         run: |
           git fetch origin ${{ github.base_ref }}
           git diff origin/${{ github.base_ref }} \
-            | grep -E "\.tf" \
+            | grep -E "\.js|\.jsx|\.ts|\.tsx" \
             | head -c 20000 > pr.diff
 
-      # 🔹 Install tools
-      - name: Install tools
+      # 🔹 Run ESLint
+      - name: Run ESLint
         run: |
-          sudo apt-get update
-          sudo apt-get install -y jq
-          curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
+          npx eslint . -f json > eslint.json || true
 
-      # 🔹 Run tfsec (Security)
-      - name: Run tfsec
+      # 🔹 Run Security Audit
+      - name: Run npm audit
         run: |
-          docker run --rm -v $(pwd):/src aquasec/tfsec /src --format json > tfsec.json
-        continue-on-error: true
+          npm audit --json > audit.json || true
 
-      # 🔹 Run tflint (Best practices)
-      - name: Run tflint
+      # 🔹 Build check (important 🔥)
+      - name: Build Project
         run: |
-          tflint --format json > tflint.json || true
+          npm run build || echo "Build failed" > build.txt
 
-      # 🔹 Prepare report
+      # 🔹 Prepare Report
       - name: Prepare Report
         run: |
-          echo "## 🔐 Security Issues (tfsec)" > report.txt
+          echo "## 🧹 ESLint Issues" > report.txt
 
-          if [ -s tfsec.json ]; then
-            jq -r '.results[] | "- [" + .severity + "] " + .description + " (" + .location.filename + ")"' tfsec.json >> report.txt
+          if [ -s eslint.json ]; then
+            cat eslint.json | jq -r '
+              .[]?.messages[]? |
+              "- [" + .severity|tostring + "] " + .message + " (" + .ruleId + ")"
+            ' >> report.txt
           else
-            echo "No security issues found" >> report.txt
+            echo "No lint issues" >> report.txt
           fi
 
-          echo "\n## 🏗 Terraform Best Practices (tflint)" >> report.txt
+          echo "\n## 🔐 Security (npm audit)" >> report.txt
 
-          if [ -s tflint.json ]; then
-            jq -r '.issues[] | "- [" + .rule + "] " + .message' tflint.json >> report.txt
+          if [ -s audit.json ]; then
+            jq -r '
+              .vulnerabilities | to_entries[] |
+              "- [" + .value.severity + "] " + .key
+            ' audit.json >> report.txt
           else
-            echo "No lint issues found" >> report.txt
+            echo "No vulnerabilities found" >> report.txt
+          fi
+
+          echo "\n## 🏗 Build Status" >> report.txt
+          if [ -f build.txt ]; then
+            echo "❌ Build failed" >> report.txt
+          else
+            echo "✅ Build successful" >> report.txt
           fi
 
       # 🔹 Comment on PR
@@ -74,7 +94,7 @@ jobs:
             const report = fs.readFileSync('report.txt', 'utf8');
 
             const body =
-              "## 🔍 Terraform Changes\n" +
+              "## 🔍 Code Changes\n" +
               "```diff\n" +
               diff +
               "\n```\n\n" +
