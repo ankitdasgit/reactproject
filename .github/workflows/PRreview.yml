@@ -1,4 +1,4 @@
-name: PR Review (React Advanced)
+name: PR Review (React Clean)
 
 on:
   pull_request:
@@ -10,20 +10,23 @@ permissions:
   issues: write
 
 jobs:
-  review:
+  pr-review:
     runs-on: ubuntu-latest
 
     steps:
+      # 🔹 Checkout
       - uses: actions/checkout@v4
 
+      # 🔹 Setup Node
       - uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Install deps
+      # 🔹 Install deps
+      - name: Install Dependencies
         run: npm install
 
-      # 🔹 Diff
+      # 🔹 Get diff (only JS/TS files)
       - name: Get Code Diff
         run: |
           git fetch origin ${{ github.base_ref }}
@@ -35,51 +38,75 @@ jobs:
       - name: Run ESLint
         run: npx eslint . -f json > eslint.json || true
 
-      # 🔹 Security
-      - name: npm audit
+      # 🔹 Security audit
+      - name: Run npm audit
         run: npm audit --json > audit.json || true
 
-      # 🔹 Tests
-      - name: Run Tests
-        run: npm test || true
-
-      # 🔹 Build
+      # 🔹 Build check
       - name: Build
         run: npm run build || echo "fail" > build.txt
 
-      # 🔹 Prepare report
+      # 🔥 Prepare CLEAN report (IMPORTANT FIX)
       - name: Prepare Report
         run: |
-          echo "## 🧹 ESLint" > report.txt
-          jq -r '.[]?.messages[]? | "- " + .message' eslint.json >> report.txt || echo "No issues" >> report.txt
+          echo "## 🧹 ESLint Issues" > report.txt
 
-          echo "\n## 🔐 Security" >> report.txt
-          jq -r '.vulnerabilities | to_entries[] | "- [" + .value.severity + "] " + .key' audit.json >> report.txt || echo "No issues" >> report.txt
+          jq -r '
+          .[]?.messages[]? |
+          "- " + .message
+          ' eslint.json >> report.txt 2>/dev/null || echo "No issues" >> report.txt
 
-          echo "\n## 🏗 Build" >> report.txt
-          if [ -f build.txt ]; then echo "❌ Build failed" >> report.txt; else echo "✅ Build passed" >> report.txt; fi
+          echo "\n## 🔐 Security Summary" >> report.txt
 
-      # 🔹 Comment
-      - uses: actions/github-script@v7
+          echo "\n### 🚨 Critical Issues" >> report.txt
+          jq -r '
+          .vulnerabilities | to_entries[] 
+          | select(.value.severity=="critical") 
+          | "- " + .key
+          ' audit.json >> report.txt 2>/dev/null || echo "None" >> report.txt
+
+          echo "\n### ⚠️ High Issues" >> report.txt
+          jq -r '
+          .vulnerabilities | to_entries[] 
+          | select(.value.severity=="high") 
+          | "- " + .key
+          ' audit.json >> report.txt 2>/dev/null || echo "None" >> report.txt
+
+          echo "\n## 🏗 Build Status" >> report.txt
+          if [ -f build.txt ]; then
+            echo "❌ Build failed" >> report.txt
+          else
+            echo "✅ Build successful" >> report.txt
+          fi
+
+      # 🔹 Comment on PR (CLEAN OUTPUT)
+      - name: Comment on PR
+        uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
 
-            const diff = fs.readFileSync('pr.diff', 'utf8').slice(0,60000);
-            const report = fs.readFileSync('report.txt','utf8');
+            const diff = fs.readFileSync('pr.diff', 'utf8').slice(0, 60000);
+            const report = fs.readFileSync('report.txt', 'utf8');
 
             const body =
-              "## 🔍 Changes\n```diff\n" + diff + "\n```\n\n" + report;
+              "## 🔍 Code Changes\n" +
+              "```diff\n" +
+              diff +
+              "\n```\n\n" +
+              report;
 
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body
+              body: body
             });
 
+            
 
-# name: PR Review (React)
+
+# name: PR Review (React Advanced)
 
 # on:
 #   pull_request:
@@ -91,25 +118,20 @@ jobs:
 #   issues: write
 
 # jobs:
-#   pr-review:
+#   review:
 #     runs-on: ubuntu-latest
 
 #     steps:
-#       # 🔹 Checkout
-#       - name: Checkout Code
-#         uses: actions/checkout@v4
+#       - uses: actions/checkout@v4
 
-#       # 🔹 Setup Node
-#       - name: Setup Node
-#         uses: actions/setup-node@v4
+#       - uses: actions/setup-node@v4
 #         with:
 #           node-version: 20
 
-#       # 🔹 Install dependencies
-#       - name: Install Dependencies
+#       - name: Install deps
 #         run: npm install
 
-#       # 🔹 Get JS/React diff
+#       # 🔹 Diff
 #       - name: Get Code Diff
 #         run: |
 #           git fetch origin ${{ github.base_ref }}
@@ -117,73 +139,50 @@ jobs:
 #             | grep -E "\.js|\.jsx|\.ts|\.tsx" \
 #             | head -c 20000 > pr.diff
 
-#       # 🔹 Run ESLint
+#       # 🔹 ESLint
 #       - name: Run ESLint
-#         run: |
-#           npx eslint . -f json > eslint.json || true
+#         run: npx eslint . -f json > eslint.json || true
 
-#       # 🔹 Run Security Audit
-#       - name: Run npm audit
-#         run: |
-#           npm audit --json > audit.json || true
+#       # 🔹 Security
+#       - name: npm audit
+#         run: npm audit --json > audit.json || true
 
-#       # 🔹 Build check (important 🔥)
-#       - name: Build Project
-#         run: |
-#           npm run build || echo "Build failed" > build.txt
+#       # 🔹 Tests
+#       - name: Run Tests
+#         run: npm test || true
 
-#       # 🔹 Prepare Report
+#       # 🔹 Build
+#       - name: Build
+#         run: npm run build || echo "fail" > build.txt
+
+#       # 🔹 Prepare report
 #       - name: Prepare Report
 #         run: |
-#           echo "## 🧹 ESLint Issues" > report.txt
+#           echo "## 🧹 ESLint" > report.txt
+#           jq -r '.[]?.messages[]? | "- " + .message' eslint.json >> report.txt || echo "No issues" >> report.txt
 
-#           if [ -s eslint.json ]; then
-#             cat eslint.json | jq -r '
-#               .[]?.messages[]? |
-#               "- [" + .severity|tostring + "] " + .message + " (" + .ruleId + ")"
-#             ' >> report.txt
-#           else
-#             echo "No lint issues" >> report.txt
-#           fi
+#           echo "\n## 🔐 Security" >> report.txt
+#           jq -r '.vulnerabilities | to_entries[] | "- [" + .value.severity + "] " + .key' audit.json >> report.txt || echo "No issues" >> report.txt
 
-#           echo "\n## 🔐 Security (npm audit)" >> report.txt
+#           echo "\n## 🏗 Build" >> report.txt
+#           if [ -f build.txt ]; then echo "❌ Build failed" >> report.txt; else echo "✅ Build passed" >> report.txt; fi
 
-#           if [ -s audit.json ]; then
-#             jq -r '
-#               .vulnerabilities | to_entries[] |
-#               "- [" + .value.severity + "] " + .key
-#             ' audit.json >> report.txt
-#           else
-#             echo "No vulnerabilities found" >> report.txt
-#           fi
-
-#           echo "\n## 🏗 Build Status" >> report.txt
-#           if [ -f build.txt ]; then
-#             echo "❌ Build failed" >> report.txt
-#           else
-#             echo "✅ Build successful" >> report.txt
-#           fi
-
-#       # 🔹 Comment on PR
-#       - name: Comment on PR
-#         uses: actions/github-script@v7
+#       # 🔹 Comment
+#       - uses: actions/github-script@v7
 #         with:
 #           script: |
 #             const fs = require('fs');
 
-#             const diff = fs.readFileSync('pr.diff', 'utf8').slice(0, 60000);
-#             const report = fs.readFileSync('report.txt', 'utf8');
+#             const diff = fs.readFileSync('pr.diff', 'utf8').slice(0,60000);
+#             const report = fs.readFileSync('report.txt','utf8');
 
 #             const body =
-#               "## 🔍 Code Changes\n" +
-#               "```diff\n" +
-#               diff +
-#               "\n```\n\n" +
-#               report;
+#               "## 🔍 Changes\n```diff\n" + diff + "\n```\n\n" + report;
 
 #             github.rest.issues.createComment({
 #               issue_number: context.issue.number,
 #               owner: context.repo.owner,
 #               repo: context.repo.repo,
-#               body: body
+#               body
 #             });
+
